@@ -1,76 +1,69 @@
-# Symbol Monorepo
+# BNL Custom Catapult — Chain Finalization Height
 
-In Q1 2021, we consolidated a number of projects into this repository.
-It includes our specialized binary payload DSL (parser and schemas), clients and sdks.
+> **Disclaimer:** This is an **unofficial, independent fork** of the Symbol monorepo. It is
+> **not affiliated with, endorsed by, or connected to** the official Symbol / NEM projects, the
+> NEM Group, or any Symbol (XYM) cryptocurrency, network, or organization. "Symbol", "NEM", and
+> related names are used only to describe the upstream software this fork derives from. Do **not**
+> treat this project as official Symbol software. Use at your own risk.
 
-| component | lint | build | test | coverage | package |
-|-----------|------|-------|------|----------| ------- |
-| [@catbuffer/parser](catbuffer/parser) | [![lint][catbuffer-parser-lint]][catbuffer-job] || [![test][catbuffer-parser-test]][catbuffer-job] <br> [![vectors][catbuffer-parser-vectors]][catbuffer-job] | [![][catbuffer-parser-cov]][catbuffer-parser-cov-link] | [![][catbuffer-package]][catbuffer-package-link] |
-|||||||
-| [@client/catapult](client/catapult) | [![lint][client-catapult-lint]][client-catapult-job] | [![build][client-catapult-build]][client-catapult-job] | [![build][client-catapult-test]][client-catapult-job] | [![][client-catapult-cov]][client-catapult-cov-link] |
-| [@client/rest](client/rest) | [![lint][client-rest-lint]][client-rest-job] || [![test][client-rest-test]][client-rest-job] | [![][client-rest-cov]][client-rest-cov-link] |
-|||||||
-| [@sdk/javascript](sdk/javascript) | [![lint][sdk-javascript-lint]][sdk-javascript-job] | [![build][sdk-javascript-build]][sdk-javascript-job] | [![test][sdk-javascript-test]][sdk-javascript-job] <br> [![examples][sdk-javascript-examples]][sdk-javascript-job] <br> [![vectors][sdk-javascript-vectors]][sdk-javascript-job] | [![][sdk-javascript-cov]][sdk-javascript-cov-link] | [![][sdk-javascript-package]][sdk-javascript-package-link] |
-| [@sdk/python](sdk/python) | [![lint][sdk-python-lint]][sdk-python-job] | [![build][sdk-python-build]][sdk-python-job] | [![test][sdk-python-test]][sdk-python-job] <br> [![examples][sdk-python-examples]][sdk-python-job] <br> [![vectors][sdk-python-vectors]][sdk-python-job] | [![][sdk-python-cov]][sdk-python-cov-link] | [![][sdk-python-package]][sdk-python-package-link] |
-|||||||
-| [@linters](linters) | [![lint][linters-lint]][linters-job] |||||
-| [@jenkins](jenkins) | [![lint][jenkins-lint]][jenkins-job] |||||
+> **免責事項:** 本プロジェクトは Symbol モノレポの**非公式かつ独立したフォーク**です。
+> 公式 Symbol / NEM プロジェクト、NEM Group、および Symbol（XYM）暗号資産・ネットワーク・関連団体とは
+> **一切関係がなく、提携・承認・後援も受けていません**。「Symbol」「NEM」等の名称は、派生元のソフトウェアを
+> 説明する目的でのみ使用しています。本プロジェクトを公式 Symbol ソフトウェアとして扱わないでください。
+> 利用は自己責任でお願いします。
 
-## Full Coverage Report
+Symbol/catapult のカスタムフォークです。**暗号方式は上流のまま**（ed25519。ポスト量子化はしていません）で、
+安定化修正と **Chain Finalization（チェーン確定高さ）** 機能を追加しています。
+ポスト量子（PQC）実験は本リポジトリを土台にした別リポジトリ
+[bnl-catapult-pqc](https://github.com/bootarou/bnl-catapult-pqc) で行っています。
 
-Detailed version can be seen on [codecov.io][symbol-cov-link].
+## Chain Finalization Height（本フォークの主機能）
 
-[![][symbol-cov]][symbol-cov-link]
+`config-network.properties` の `[chain]` に追加された **opt-in** 設定です。
+チェーンが指定高さに到達すると**ブロック生成を停止し、それ以降のブロックを拒否**して
+チェーンを読み取り専用の確定状態にします。有限で「完結する」チェーンを運用するための機能です。
 
-[symbol-cov]: https://codecov.io/gh/symbol/symbol/branch/dev/graphs/tree.svg
-[symbol-cov-link]: https://codecov.io/gh/symbol/symbol/tree/dev
+```ini
+[chain]
+# Height(0) = 無効（従来どおり無限に伸びる。既定値・後方互換）
+chainFinalizationHeight = 0
+```
 
-[catbuffer-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Fcatbuffer-parser/activity/?branch=dev
-[catbuffer-parser-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fcatbuffer-parser%2Fdev%2F&config=catbuffer-parser-lint
-[catbuffer-parser-test]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fcatbuffer-parser%2Fdev%2F&config=catbuffer-parser-test
-[catbuffer-parser-vectors]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fcatbuffer-parser%2Fdev%2F&config=catbuffer-parser-vectors
-[catbuffer-parser-cov]: https://codecov.io/gh/symbol/symbol/branch/dev/graph/badge.svg?token=SSYYBMK0M7&flag=catbuffer-parser
-[catbuffer-parser-cov-link]: https://codecov.io/gh/symbol/symbol/tree/dev/catbuffer/parser
-[catbuffer-package]: https://img.shields.io/pypi/v/catparser
-[catbuffer-package-link]: https://pypi.org/project/catparser
+実装:
 
-[client-catapult-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Fclient-catapult/activity?branch=dev
-[client-catapult-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fclient-catapult%2Fdev%2F&config=client-catapult-lint
-[client-catapult-build]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fclient-catapult%2Fdev%2F&config=client-catapult-build
-[client-catapult-test]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fclient-catapult%2Fdev%2F&config=client-catapult-test
-[client-catapult-cov]: https://codecov.io/gh/symbol/symbol/branch/dev/graph/badge.svg?token=SSYYBMK0M7&flag=client-catapult
-[client-catapult-cov-link]: https://codecov.io/gh/symbol/symbol/tree/dev/client/catapult
+- **model**: `BlockchainConfiguration` にオプショナルな `ChainFinalizationHeight` を追加
+  （`Height(0)` で無効化 = 後方互換）
+- **harvesting**: `Harvester::harvest` は、候補ブロックの高さが確定高さを超える場合
+  `nullptr` を返してブロック生成を停止
+- **coresystem**: 新しい stateful validator `ChainFinalizationValidator` が確定高さ超過の
+  ブロックを `Failure_Core_Chain_Finalization_Height_Exceeded` で拒否
+- **tests**: 設定ロード・harvester・validator のテストを同梱
 
-[client-rest-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Fclient-rest/activity?branch=dev
-[client-rest-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fclient-rest%2Fdev%2F&config=client-rest-lint
-[client-rest-test]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fclient-rest%2Fdev%2F&config=client-rest-test
-[client-rest-cov]: https://codecov.io/gh/symbol/symbol/branch/dev/graph/badge.svg?token=SSYYBMK0M7&flag=client-rest
-[client-rest-cov-link]: https://codecov.io/gh/symbol/symbol/tree/dev/client/rest
+## 安定化修正（上流に対する主な fix）
 
-[sdk-javascript-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Fsdk-javascript/activity?branch=dev
-[sdk-javascript-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-javascript%2Fdev%2F&config=sdk-javascript-lint
-[sdk-javascript-build]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-javascript%2Fdev%2F&config=sdk-javascript-build
-[sdk-javascript-test]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-javascript%2Fdev%2F&config=sdk-javascript-test
-[sdk-javascript-examples]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-javascript%2Fdev%2F&config=sdk-javascript-examples
-[sdk-javascript-vectors]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-javascript%2Fdev%2F&config=sdk-javascript-vectors
-[sdk-javascript-cov]: https://codecov.io/gh/symbol/symbol/branch/dev/graph/badge.svg?token=SSYYBMK0M7&flag=sdk-javascript
-[sdk-javascript-cov-link]: https://codecov.io/gh/symbol/symbol/tree/dev/sdk/javascript
-[sdk-javascript-package]: https://img.shields.io/npm/v/symbol-sdk-javascript
-[sdk-javascript-package-link]: https://www.npmjs.com/package/symbol-sdk-javascript
+- TLS ソケットの graceful close（Windows での RST ストーム抑止）
+- Windows のハンドル解放遅延に対する RocksDB / state ディレクトリ操作のリトライ
+- `LocalNode` boot/shutdown の再入ガード
+- `BlockchainSyncConsumer` の null 参照修正
+- `CatRealloc` の copyTo 引数順修正・解放済みプールスロットのワイプ
+- mongo プラグインのテストソースのビルド修正
+- ccache のオプトアウト（`NO_CCACHE`）ほか
 
-[sdk-python-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Fsdk-python/activity?branch=dev
-[sdk-python-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-python%2Fdev%2F&config=sdk-python-lint
-[sdk-python-build]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-python%2Fdev%2F&config=sdk-python-build
-[sdk-python-test]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-python%2Fdev%2F&config=sdk-python-test
-[sdk-python-examples]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-python%2Fdev%2F&config=sdk-python-examples
-[sdk-python-vectors]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fsdk-python%2Fdev%2F&config=sdk-python-vectors
-[sdk-python-cov]: https://codecov.io/gh/symbol/symbol/branch/dev/graph/badge.svg?token=SSYYBMK0M7&flag=sdk-python
-[sdk-python-cov-link]: https://codecov.io/gh/symbol/symbol/tree/dev/sdk/python
-[sdk-python-package]: https://img.shields.io/pypi/v/symbol-sdk-python
-[sdk-python-package-link]: https://pypi.org/project/symbol-sdk-python
+## ブランチ構成
 
-[jenkins-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Fjenkins/activity?branch=dev
-[jenkins-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Fjenkins%2Fdev%2F&config=jenkins-lint
+| ブランチ | 内容 |
+|---|---|
+| `main` | 上流 + 安定化修正 + Chain Finalization Height（本フォークの完成形） |
+| `dev` | 上流 + 安定化修正のみ（Chain Finalization 追加前） |
 
-[linters-job]: https://jenkins.symbolsyndicate.us/blue/organizations/jenkins/Symbol%2Fgenerated%2Fsymbol%2Flinters/activity?branch=dev
-[linters-lint]: https://jenkins.symbolsyndicate.us/buildStatus/icon?job=Symbol%2Fgenerated%2Fsymbol%2Flinters%2Fdev%2F&config=linters-lint
+## ビルド
+
+上流 catapult と同一のツールチェーンです（[`client/catapult`](client/catapult) を参照）。
+`symbolplatform/symbol-server-build-base` イメージ内でのビルドを推奨します。
+
+## 関連リポジトリ
+
+| | |
+|---|---|
+| [bnl-catapult-pqc](https://github.com/bootarou/bnl-catapult-pqc) | 本リポジトリを土台にしたポスト量子（ML-DSA-44 / ML-KEM-768 / iVRF）実験フォーク |
+| [symbol/symbol](https://github.com/symbol/symbol) | 派生元（上流）の Symbol モノレポ |
