@@ -65,5 +65,6 @@ chainFinalizationHeight = 0
 
 | | |
 |---|---|
+| [blockchain-network-launcher](https://github.com/bootarou/blockchain-network-launcher) | **BNL 本体** — カスタムブロックチェーンネットワークの起動・管理ツール（本フォークの利用元） |
 | [bnl-catapult-pqc](https://github.com/bootarou/bnl-catapult-pqc) | 本リポジトリを土台にしたポスト量子（ML-DSA-44 / ML-KEM-768 / iVRF）実験フォーク |
 | [symbol/symbol](https://github.com/symbol/symbol) | 派生元（上流）の Symbol モノレポ |
