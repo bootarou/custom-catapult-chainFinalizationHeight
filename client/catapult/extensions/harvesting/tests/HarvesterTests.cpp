@@ -145,6 +145,24 @@ namespace catapult { namespace harvesting {
 				return std::make_unique<Harvester>(Cache, config, Beneficiary, *pUnlockedAccounts, blockGenerator);
 			}
 
+			std::unique_ptr<Harvester> CreateHarvester(
+					const model::BlockchainConfiguration& config,
+					const UnconfirmedTransactionsCountSupplier& countSupplier) {
+				return CreateHarvester(config, [](const auto& blockHeader, auto) {
+					auto size = model::GetBlockHeaderSize(blockHeader.Type);
+					auto pBlock = utils::MakeUniqueWithSize<model::Block>(size);
+					std::memcpy(static_cast<void*>(pBlock.get()), &blockHeader, size);
+					return pBlock;
+				}, countSupplier);
+			}
+
+			std::unique_ptr<Harvester> CreateHarvester(
+					const model::BlockchainConfiguration& config,
+					const BlockGenerator& blockGenerator,
+					const UnconfirmedTransactionsCountSupplier& countSupplier) {
+				return std::make_unique<Harvester>(Cache, config, Beneficiary, *pUnlockedAccounts, blockGenerator, countSupplier);
+			}
+
 			HarvesterDescriptor BestHarvester() const {
 				crypto::VrfProof bestVrfProof;
 				uint64_t bestHit = std::numeric_limits<uint64_t>::max();
@@ -320,6 +338,129 @@ namespace catapult { namespace harvesting {
 		// Assert: candidate height (2) exceeds finalization height (1), so harvesting is stopped
 		EXPECT_FALSE(!!pBlock);
 	}
+
+	// region empty block policy
+
+	namespace {
+		model::BlockchainConfiguration CreateConfigurationWithEmptyBlockPolicy(
+				model::EmptyBlockPolicyMode policy,
+				const utils::TimeSpan& heartbeatInterval = utils::TimeSpan()) {
+			auto config = CreateConfiguration();
+			config.EmptyBlockPolicy = policy;
+			config.EmptyBlockHeartbeatInterval = heartbeatInterval;
+			return config;
+		}
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsEmptyBlockWhenPolicyIsNormalAndNoTransactionsArePending) {
+		// Arrange:
+		HarvesterContext context;
+		auto config = CreateConfigurationWithEmptyBlockPolicy(model::EmptyBlockPolicyMode::Normal);
+		auto pHarvester = context.CreateHarvester(config, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 0; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert: legacy behavior - empty blocks are harvested
+		EXPECT_TRUE(!!pBlock);
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsNullptrWhenPolicyIsSuppressAndNoTransactionsArePending) {
+		// Arrange:
+		HarvesterContext context;
+		auto config = CreateConfigurationWithEmptyBlockPolicy(model::EmptyBlockPolicyMode::Suppress);
+		auto pHarvester = context.CreateHarvester(config, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 0; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert:
+		EXPECT_FALSE(!!pBlock);
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsBlockWhenPolicyIsSuppressAndTransactionsArePending) {
+		// Arrange:
+		HarvesterContext context;
+		auto config = CreateConfigurationWithEmptyBlockPolicy(model::EmptyBlockPolicyMode::Suppress);
+
+		// - the generator emulates packing a pending transaction into the block
+		auto pHarvester = context.CreateHarvester(config, [](const auto& blockHeader, auto) {
+			auto pBlock = test::GenerateBlockWithTransactions(1, blockHeader.Height);
+			pBlock->SignerPublicKey = blockHeader.SignerPublicKey;
+			return pBlock;
+		}, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 1; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert:
+		EXPECT_TRUE(!!pBlock);
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsNullptrWhenPolicyIsSuppressAndPendingTransactionsBecomeIneligible) {
+		// Arrange: the supplier reports a pending transaction, but the generator produces an empty block
+		HarvesterContext context;
+		auto config = CreateConfigurationWithEmptyBlockPolicy(model::EmptyBlockPolicyMode::Suppress);
+		auto pHarvester = context.CreateHarvester(config, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 1; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert: the post-generation guard drops the unexpected empty block
+		EXPECT_FALSE(!!pBlock);
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsNullptrWhenPolicyIsHeartbeatAndHeartbeatIsNotDue) {
+		// Arrange: elapsed time (Max_Time - 1ms) is less than the configured interval
+		//          (TimeSpan is backed by signed chrono millis, so the interval cannot exceed int64 max)
+		HarvesterContext context;
+		context.pLastBlock->Timestamp = Timestamp(1);
+		auto config = CreateConfigurationWithEmptyBlockPolicy(
+				model::EmptyBlockPolicyMode::Heartbeat,
+				utils::TimeSpan::FromMilliseconds(static_cast<uint64_t>(std::numeric_limits<int64_t>::max())));
+		auto pHarvester = context.CreateHarvester(config, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 0; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert:
+		EXPECT_FALSE(!!pBlock);
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsEmptyBlockWhenPolicyIsHeartbeatAndHeartbeatIsDue) {
+		// Arrange: elapsed time (Max_Time since the genesis-timestamped parent) exceeds one hour
+		HarvesterContext context;
+		auto config = CreateConfigurationWithEmptyBlockPolicy(model::EmptyBlockPolicyMode::Heartbeat, utils::TimeSpan::FromHours(1));
+		auto pHarvester = context.CreateHarvester(config, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 0; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert: a heartbeat empty block is harvested
+		EXPECT_TRUE(!!pBlock);
+	}
+
+	TEST(TEST_CLASS, HarvestReturnsBlockWhenPolicyIsHeartbeatAndTransactionsArePendingBeforeHeartbeat) {
+		// Arrange: heartbeat is not due, but transactions are pending
+		HarvesterContext context;
+		context.pLastBlock->Timestamp = Timestamp(1);
+		auto config = CreateConfigurationWithEmptyBlockPolicy(
+				model::EmptyBlockPolicyMode::Heartbeat,
+				utils::TimeSpan::FromMilliseconds(static_cast<uint64_t>(std::numeric_limits<int64_t>::max())));
+		auto pHarvester = context.CreateHarvester(config, [](const auto& blockHeader, auto) {
+			auto pBlock = test::GenerateBlockWithTransactions(1, blockHeader.Height);
+			pBlock->SignerPublicKey = blockHeader.SignerPublicKey;
+			return pBlock;
+		}, UnconfirmedTransactionsCountSupplier([]() -> size_t { return 1; }));
+
+		// Act:
+		auto pBlock = pHarvester->harvest(context.LastBlockElement, Max_Time);
+
+		// Assert:
+		EXPECT_TRUE(!!pBlock);
+	}
+
+	// endregion
 
 	TEST(TEST_CLASS, HarvestReturnsNullptrWhenStatisticCacheDoesNotContainInfoAtLastBlockHeight) {
 		// Arrange:

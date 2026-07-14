@@ -209,6 +209,8 @@ namespace catapult { namespace model {
 				EXPECT_EQ(0u, config.MaxTransactionsPerBlock);
 
 				EXPECT_EQ(Height(0), config.ChainFinalizationHeight);
+				EXPECT_EQ(EmptyBlockPolicyMode::Normal, config.EmptyBlockPolicy);
+				EXPECT_EQ(utils::TimeSpan(), config.EmptyBlockHeartbeatInterval);
 
 				EXPECT_EQ(Height(0), config.ForkHeights.TotalVotingBalanceCalculationFix);
 				EXPECT_EQ(Height(0), config.ForkHeights.TreasuryReissuance);
@@ -272,6 +274,11 @@ namespace catapult { namespace model {
 				// chainFinalizationHeight is optional and absent from the custom bag, so it defaults to Height(0)
 				EXPECT_EQ(Height(0), config.ChainFinalizationHeight);
 
+				// the empty block policy properties are optional and absent from the custom bag, so they default
+				// to Normal (legacy behavior) with a one day heartbeat interval
+				EXPECT_EQ(EmptyBlockPolicyMode::Normal, config.EmptyBlockPolicy);
+				EXPECT_EQ(utils::TimeSpan::FromSeconds(86'400), config.EmptyBlockHeartbeatInterval);
+
 				EXPECT_EQ(Height(998877), config.ForkHeights.TotalVotingBalanceCalculationFix);
 				EXPECT_EQ(Height(11998877), config.ForkHeights.TreasuryReissuance);
 				EXPECT_EQ(Height(22334455), config.ForkHeights.StrictAggregateTransactionHash);
@@ -320,6 +327,36 @@ namespace catapult { namespace model {
 
 		// Assert:
 		EXPECT_EQ(Height(5000), config.ChainFinalizationHeight);
+	}
+
+	TEST(TEST_CLASS, CanLoadBlockchainConfigurationWithEmptyBlockPolicy) {
+		// Arrange:
+		for (const auto& pair : std::initializer_list<std::pair<const char*, EmptyBlockPolicyMode>>{
+				{ "normal", EmptyBlockPolicyMode::Normal },
+				{ "suppress", EmptyBlockPolicyMode::Suppress },
+				{ "heartbeat", EmptyBlockPolicyMode::Heartbeat } }) {
+			auto container = BlockchainConfigurationTraits::CreateProperties();
+			container["chain"].emplace_back("emptyBlockPolicy", pair.first);
+			container["chain"].emplace_back("emptyBlockHeartbeatInterval", "4h");
+
+			// Act:
+			auto config = BlockchainConfiguration::LoadFromBag(utils::ConfigurationBag(std::move(container)));
+
+			// Assert:
+			EXPECT_EQ(pair.second, config.EmptyBlockPolicy) << pair.first;
+			EXPECT_EQ(utils::TimeSpan::FromHours(4), config.EmptyBlockHeartbeatInterval) << pair.first;
+		}
+	}
+
+	TEST(TEST_CLASS, CannotLoadBlockchainConfigurationWithInvalidEmptyBlockPolicy) {
+		// Arrange:
+		auto container = BlockchainConfigurationTraits::CreateProperties();
+		container["chain"].emplace_back("emptyBlockPolicy", "sometimes");
+
+		// Act + Assert:
+		EXPECT_THROW(
+				BlockchainConfiguration::LoadFromBag(utils::ConfigurationBag(std::move(container))),
+				utils::property_malformed_error);
 	}
 
 	TEST(TEST_CLASS, CannotLoadBlockchainConfigurationWithInvalidNetwork) {

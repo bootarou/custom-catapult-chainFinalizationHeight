@@ -23,6 +23,7 @@
 #include "HarvesterBlockGenerator.h"
 #include "UnlockedAccounts.h"
 #include "catapult/cache/CatapultCache.h"
+#include "catapult/functions.h"
 #include "catapult/model/BlockchainConfiguration.h"
 #include "catapult/model/Elements.h"
 #include "catapult/model/EntityInfo.h"
@@ -31,17 +32,23 @@ namespace catapult { namespace harvesting { struct BlockExecutionHashes; } }
 
 namespace catapult { namespace harvesting {
 
+	/// Supplies the number of transactions currently waiting in the unconfirmed transactions cache.
+	using UnconfirmedTransactionsCountSupplier = supplier<size_t>;
+
 	/// Harvests new blocks.
 	class Harvester {
 	public:
 		/// Creates a harvester around catapult \a cache, blockchain \a config, \a beneficiary,
 		/// unlocked accounts set (\a unlockedAccounts) and \a blockGenerator used to customize block generation.
+		/// \a unconfirmedTransactionsCountSupplier feeds the empty block policy; when not set,
+		/// the pending transactions count is assumed to be zero.
 		Harvester(
 				const cache::CatapultCache& cache,
 				const model::BlockchainConfiguration& config,
 				const Address& beneficiary,
 				const UnlockedAccounts& unlockedAccounts,
-				const BlockGenerator& blockGenerator);
+				const BlockGenerator& blockGenerator,
+				const UnconfirmedTransactionsCountSupplier& unconfirmedTransactionsCountSupplier = UnconfirmedTransactionsCountSupplier());
 
 	public:
 		/// Creates the best block (if any) harvested by any unlocked account.
@@ -54,5 +61,6 @@ namespace catapult { namespace harvesting {
 		const Address m_beneficiary;
 		const UnlockedAccounts& m_unlockedAccounts;
 		BlockGenerator m_blockGenerator;
+		UnconfirmedTransactionsCountSupplier m_unconfirmedTransactionsCountSupplier;
 	};
 }}

@@ -78,12 +78,14 @@ namespace catapult { namespace harvesting {
 			const model::BlockchainConfiguration& config,
 			const Address& beneficiary,
 			const UnlockedAccounts& unlockedAccounts,
-			const BlockGenerator& blockGenerator)
+			const BlockGenerator& blockGenerator,
+			const UnconfirmedTransactionsCountSupplier& unconfirmedTransactionsCountSupplier)
 			: m_cache(cache)
 			, m_config(config)
 			, m_beneficiary(beneficiary)
 			, m_unlockedAccounts(unlockedAccounts)
 			, m_blockGenerator(blockGenerator)
+			, m_unconfirmedTransactionsCountSupplier(unconfirmedTransactionsCountSupplier)
 	{}
 
 	std::unique_ptr<model::Block> Harvester::harvest(const model::BlockElement& lastBlockElement, Timestamp timestamp) {
@@ -93,6 +95,31 @@ namespace catapult { namespace harvesting {
 		if (Height(0) != m_config.ChainFinalizationHeight && context.Height > m_config.ChainFinalizationHeight) {
 			CATAPULT_LOG(debug) << "skipping harvest attempt because chain is finalized at height " << m_config.ChainFinalizationHeight;
 			return nullptr;
+		}
+
+		// empty block policy: when there are no pending transactions, skip the harvest attempt entirely.
+		// this check runs BEFORE any VRF or difficulty work, so a skipped attempt is nearly free.
+		// TODO: v2 - refine the pending check from "unconfirmed cache is non-empty" to "at least one transaction
+		//       is eligible for the next block" (fee multiplier, deadline, account eligibility).
+		bool isEmptyBlockAllowed = model::EmptyBlockPolicyMode::Normal == m_config.EmptyBlockPolicy;
+		if (!isEmptyBlockAllowed) {
+			auto numPendingTransactions = m_unconfirmedTransactionsCountSupplier ? m_unconfirmedTransactionsCountSupplier() : 0;
+			if (0 == numPendingTransactions) {
+				bool isHeartbeatDue = model::EmptyBlockPolicyMode::Heartbeat == m_config.EmptyBlockPolicy
+						&& context.BlockTime >= m_config.EmptyBlockHeartbeatInterval;
+				if (!isHeartbeatDue) {
+					CATAPULT_LOG(debug)
+							<< "skipping empty block at height " << context.Height
+							<< " (policy: " << (model::EmptyBlockPolicyMode::Heartbeat == m_config.EmptyBlockPolicy ? "heartbeat" : "suppress")
+							<< ", no pending transactions, " << context.BlockTime << " since last block)";
+					return nullptr;
+				}
+
+				CATAPULT_LOG(info)
+						<< "generating heartbeat empty block at height " << context.Height
+						<< " (" << context.BlockTime << " since last block >= interval " << m_config.EmptyBlockHeartbeatInterval << ")";
+				isEmptyBlockAllowed = true;
+			}
 		}
 
 		if (!context.tryCalculateDifficulty(m_cache.sub<cache::BlockStatisticCache>(), m_config)) {
@@ -143,6 +170,17 @@ namespace catapult { namespace harvesting {
 
 		AddGenerationHashProof(*pBlockHeader, vrfProof);
 		auto pBlock = m_blockGenerator(*pBlockHeader, m_config.MaxTransactionsPerBlock);
+		if (pBlock && !isEmptyBlockAllowed) {
+			// pending transactions can disappear (expire / get invalidated) between the pre-check
+			// and generation; enforce the policy on the generated block as well
+			auto transactions = pBlock->Transactions();
+			if (transactions.cbegin() == transactions.cend()) {
+				CATAPULT_LOG(debug) << "dropping generated empty block at height " << context.Height
+						<< " (pending transactions became ineligible)";
+				return nullptr;
+			}
+		}
+
 		if (pBlock)
 			SignBlockHeader(*pHarvesterKeyPair, *pBlock);
 
