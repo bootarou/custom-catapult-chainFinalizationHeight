@@ -77,6 +77,15 @@ namespace catapult { namespace chain {
 				m_validationResult = false;
 			}
 
+			void advanceLocalChain(uint32_t height) {
+				auto currentHeight = m_pBlockStorageCache->view().chainHeight().unwrap();
+				auto pBlocks = mocks::CreateMemoryBlockStorage(height);
+				auto modifier = m_pBlockStorageCache->modifier();
+				for (auto i = currentHeight + 1; i <= height; ++i)
+					modifier.saveBlock(*pBlocks->loadBlockElement(Height(i)));
+				modifier.commit();
+			}
+
 		public:
 			auto synchronize() {
 				return m_synchronizer(m_proofApi).get();
@@ -357,6 +366,38 @@ namespace catapult { namespace chain {
 	// endregion
 
 	// region unfinalizedBlocksDuration
+
+	TEST(TEST_CLASS, NeutralWhenLocalChainIsBehindFinalizedHeight) {
+		for (auto duration : { BlockDuration(), BlockDuration(5) }) {
+			TestContext context(20, Height(99), Height(100), duration);
+			context.api().setFinalizationStatistics(CreateFinalizationStatistics(FinalizationEpoch(7), Height(120)));
+			AssertNeutral(context);
+		}
+	}
+
+	TEST(TEST_CLASS, ResumesWithoutReinitializationAfterLocalChainCatchesUp) {
+		TestContext context(20, Height(99), Height(100), BlockDuration(5));
+		context.api().setFinalizationStatistics(CreateFinalizationStatistics(FinalizationEpoch(7), Height(120)));
+		auto pProof = std::make_shared<model::FinalizationProof>();
+		pProof->Round = { FinalizationEpoch(7), FinalizationPoint(111) };
+		pProof->Height = Height(120);
+		pProof->Hash = Hash256{ { 33 } };
+		context.api().setProof(pProof);
+
+		AssertNeutral(context);
+		context.advanceLocalChain(100);
+		AssertNeutral(context);
+		context.advanceLocalChain(104);
+		AssertNeutral(context);
+		context.advanceLocalChain(105);
+		AssertSuccess(context, FinalizationEpoch(7), Height(120));
+
+		// The new proof is ahead again; no further request, validation or save.
+		EXPECT_EQ(ionet::NodeInteractionResultCode::Neutral, context.synchronize());
+		EXPECT_EQ(std::vector<FinalizationEpoch>({ FinalizationEpoch(7) }), context.api().proofEpochs());
+		EXPECT_EQ(1u, context.numValidationCalls());
+		EXPECT_EQ(1u, context.storage().savedProofDescriptors().size());
+	}
 
 	TEST(TEST_CLASS, NeutralWhenLocalUnfinalizedBlocksDurationIsLessThanThreshold_NonzeroUnfinalizedBlocksDuration) {
 		// Arrange:

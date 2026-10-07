@@ -112,6 +112,11 @@ namespace catapult { namespace chain {
 		private:
 			FinalizationEpoch calculateRequestEpoch(Height localFinalizedHeight) {
 				auto localChainHeight = m_blockStorage.view().chainHeight();
+				// Proofs can arrive before their blocks. Avoid unsigned underflow and
+				// requesting a proof whose validation context is not locally available.
+				if (localChainHeight < localFinalizedHeight)
+					return FinalizationEpoch();
+
 				auto nextProofHeight = model::CalculateGroupedHeight<Height>(
 						Height(localFinalizedHeight.unwrap() + m_votingSetGrouping + 1),
 						m_votingSetGrouping);
